@@ -1,0 +1,90 @@
+# =======================================================
+# 🐍 Python Standard
+# =======================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.ruff_cache/
+
+# =======================================================
+# 📦 Virtual Environments
+# =======================================================
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# =======================================================
+# 🤖 Machine Learning & Models (CRITICAL)
+# =======================================================
+# Ignore the fine-tuned model folder (Too large for Git)
+saved_security_model/
+training_checkpoints/
+results/
+models/
+
+# Ignore large individual model files if they end up elsewhere
+*.bin
+*.pt
+*.pth
+*.onnx
+*.safetensors
+*.h5
+*.tflite
+
+# =======================================================
+# 📊 Data & Benchmarks
+# =======================================================
+# Ignore datasets to protect privacy and save space
+*.csv
+*.tsv
+*.jsonl
+*.parquet
+dataset/
+datasets/
+data/
+
+# Keep config files, but ignore local secrets if you have them
+.env
+
+# =======================================================
+# 💻 IDE & OS Files
+# =======================================================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# =======================================================
+# 📝 Logs & Temporary Files
+# =======================================================
+*.log
+*.pot
+*.mo
+*.spec

@@ -1,0 +1,25 @@
+[project]
+name = "sentinel-ai"
+version = "0.1.0"
+description = "LLM Safety Gateway"
+requires-python = ">=3.13"
+
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic",
+    "python-dotenv",
+    "transformers-interpret",
+    "transformers",
+    "torch",
+    "sentence-transformers",
+    "nltk",
+    "spacy",
+    "rapidfuzz",
+    "chromadb",
+    "openai",
+    "pandas",
+    "datasets",
+    "evaluate",
+    "scikit-learn",
+]

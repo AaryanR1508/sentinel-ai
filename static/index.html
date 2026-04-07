@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentinel AI — Safety Gateway</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <span class="logo-icon">🛡️</span>
+                    <div class="logo-text">
+                        <h1>Sentinel AI</h1>
+                        <span class="logo-sub">Safety Gateway</span>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle">
+                        <span class="theme-icon">🌙</span>
+                        <span class="theme-label">Dark</span>
+                    </button>
+                    <button class="config-btn" onclick="toggleConfig()" title="Layer weight config">
+                        <span>⚙️</span>
+                        <span>Config</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="content-grid">
+
+                <!-- Left Column: Input, Config, Results -->
+                <div class="left-column">
+
+                    <!-- Input Card -->
+                    <section class="input-card">
+                        <div class="card-header">
+                            <span class="card-title">Prompt</span>
+                            <select id="modeSelect">
+                                <option value="analyze">Analyze</option>
+                                <option value="gateway" selected>Full Gateway</option>
+                            </select>
+                        </div>
+                        <textarea
+                            id="promptInput"
+                            placeholder="Enter a prompt to analyze for security threats..."
+                            rows="6"
+                        ></textarea>
+                        <button id="runBtn" onclick="runAnalysis()">
+                            <span class="btn-icon">▶</span>
+                            <span>Analyze</span>
+                        </button>
+                    </section>
+
+                    <!-- Config Panel (collapsible) -->
+                    <!-- <section class="config-panel" id="configPanel">
+                        <div class="config-content">
+                            <h3>Layer Weights</h3>
+                            <div class="weight-controls">
+                                <div class="weight-item">
+                                    <label>Regex</label>
+                                    <input type="range" id="weightRegex" min="0" max="100" value="25" oninput="updateWeights()">
+                                    <span class="weight-value" id="weightRegexValue">0.25</span>
+                                </div>
+                                <div class="weight-item">
+                                    <label>ML Model</label>
+                                    <input type="range" id="weightSecurity" min="0" max="100" value="45" oninput="updateWeights()">
+                                    <span class="weight-value" id="weightSecurityValue">0.45</span>
+                                </div>
+                                <div class="weight-item">
+                                    <label>Vector DB</label>
+                                    <input type="range" id="weightVectorDB" min="0" max="100" value="30" oninput="updateWeights()">
+                                    <span class="weight-value" id="weightVectorDBValue">0.30</span>
+                                </div>
+                            </div>
+                            <div class="weight-total">
+                                Total: <span id="weightTotal">1.00</span>
+                                <span id="weightWarning" class="weight-warning"></span>
+                            </div>
+                        </div>
+                    </section> -->
+
+                    <!-- Results -->
+                    <section class="results-section" id="resultsSection">
+                        <div class="results-header">
+                            <h3>Results</h3>
+                            <span class="total-latency" id="totalLatency">—</span>
+                        </div>
+                        <div class="results-content">
+                            <div class="result-item">
+                                <span class="result-label">Action</span>
+                                <span class="result-value" id="resultActionValue">—</span>
+                            </div>
+                            <div class="result-item">
+                                <span class="result-label">Risk Score</span>
+                                <span class="result-value" id="resultScoreValue">—</span>
+                            </div>
+                        </div>
+                        <div class="sanitized-output" id="sanitizedOutput">
+                            <span class="result-label">Sanitized Prompt</span>
+                            <div class="sanitized-text" id="sanitizedText"></div>
+                        </div>
+                    </section>
+
+                </div>
+
+                <!-- Right Column: Flow Visualization -->
+                <div class="right-column">
+                    <div class="flowchart-container">
+
+                        <!-- Input Node -->
+                        <div class="flow-node input-node" id="inputNode">
+                            <span class="node-icon">📥</span>
+                            <span class="node-label">INPUT</span>
+                        </div>
+
+                        <div class="flow-connector" id="connector1"></div>
+
+                        <!-- Analysis Layers -->
+                        <div class="layers-container">
+                            <div class="layer-node" id="regexLayer">
+                                <div class="layer-header">
+                                    <span class="layer-icon">🔤</span>
+                                    <span class="layer-name">Regex</span>
+                                </div>
+                                <div class="layer-metrics">
+                                    <div class="metric-row">
+                                        <span class="metric-label">Score</span>
+                                        <span class="score" id="regexScore">—</span>
+                                    </div>
+                                    <div class="metric-row">
+                                        <span class="metric-label">Time</span>
+                                        <span class="latency" id="regexLatency">—</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="layer-node" id="securityLayer">
+                                <div class="layer-header">
+                                    <span class="layer-icon">🤖</span>
+                                    <span class="layer-name">ML Model</span>
+                                </div>
+                                <div class="layer-metrics">
+                                    <div class="metric-row">
+                                        <span class="metric-label">Score</span>
+                                        <span class="score" id="securityScore">—</span>
+                                    </div>
+                                    <div class="metric-row">
+                                        <span class="metric-label">Time</span>
+                                        <span class="latency" id="securityLatency">—</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="layer-node" id="vectorDBLayer">
+                                <div class="layer-header">
+                                    <span class="layer-icon">🔬</span>
+                                    <span class="layer-name">Vector DB</span>
+                                </div>
+                                <div class="layer-metrics">
+                                    <div class="metric-row">
+                                        <span class="metric-label">Score</span>
+                                        <span class="score" id="vectorDBScore">—</span>
+                                    </div>
+                                    <div class="metric-row">
+                                        <span class="metric-label">Time</span>
+                                        <span class="latency" id="vectorDBLatency">—</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flow-connector" id="connector2"></div>
+
+                        <!-- Decision Node -->
+                        <div class="flow-node decision-node" id="decisionNode">
+                            <span class="node-icon">⚖️</span>
+                            <span class="node-label">DECISION</span>
+                            <span class="decision-score" id="totalScore">—</span>
+                        </div>
+
+                        <div class="flow-connector" id="connector3"></div>
+
+                        <!-- Action Nodes -->
+                        <div class="actions-container">
+                            <div class="action-node pass" id="actionPass">
+                                <span class="action-icon">✓</span>
+                                <span class="action-label">PASS</span>
+                            </div>
+                            <div class="action-node sanitize" id="actionSanitize">
+                                <span class="action-icon">◆</span>
+                                <span class="action-label">SANITIZE</span>
+                            </div>
+                            <div class="action-node block" id="actionBlock">
+                                <span class="action-icon">✕</span>
+                                <span class="action-label">BLOCK</span>
+                            </div>
+                        </div>
+
+                        <!-- Sanitizer -->
+                        <div class="sanitizer-section" id="sanitizerSection">
+                            <div class="flow-connector" id="connector4"></div>
+                            <div class="flow-node sanitizer-node" id="sanitizerNode">
+                                <span class="node-icon">🧹</span>
+                                <span class="node-label">SANITIZER</span>
+                                <span class="sanitizer-latency" id="sanitizerLatency">—</span>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
