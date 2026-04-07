@@ -95,7 +95,7 @@ function loadTheme() {
 
     const icon = document.querySelector('.theme-icon');
     const label = document.querySelector('.theme-label');
-    if (savedTheme === 'dark') {
+    if (savedTheme === 'light') {
         if (icon) icon.textContent = '☀️';
         if (label) label.textContent = 'Light';
     }
