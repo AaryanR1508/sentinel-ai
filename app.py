@@ -23,6 +23,8 @@ from pydantic import BaseModel, Field
 from utils.reg import SemanticSanitizer
 from utils.security_model import SecurityClassifier
 from utils.sanitizer import PromptSanitizer
+from utils.vector_db import BottleneckExtractor
+from utils.cache import AnalysisCache
 
 
 # =============================================================================
@@ -91,6 +93,7 @@ class AnalysisResponse(BaseModel):
     sanitized_prompt: Optional[str] = None
     total_latency_ms: float
     sanitizer_latency_ms: Optional[float] = None
+    cache_hit: bool = False
 
 
 class HealthResponse(BaseModel):
@@ -125,16 +128,9 @@ async def lifespan(app: FastAPI):
         print("\n📦 Loading Layer 2: Security Model...")
         app.state.security_model = SecurityClassifier()
 
-        # Layer 3: Vector DB Placeholder (Semantic similarity to jailbreaks)
-        print("\n📦 Loading Layer 3: Vector DB (Placeholder)...")
-
-        class VectorDBPlaceholder:
-            """Placeholder for Vector DB layer - returns 0 until implemented."""
-
-            async def get_score_async(self, text: str) -> float:
-                return 0.0
-
-        app.state.vector_db_layer = VectorDBPlaceholder()
+        # Layer 3: Vector DB (Semantic similarity to jailbreaks)
+        print("\n📦 Loading Layer 3: Vector DB (Bottleneck Extractor)...")
+        app.state.vector_db_layer = BottleneckExtractor()
 
         # Sanitizer Layer (only used when needed)
         print("\n📦 Loading Sanitizer Layer...")
@@ -148,6 +144,18 @@ async def lifespan(app: FastAPI):
             )
             app.state.sanitizer = None
             app.state.sanitizer_available = False
+
+        # Semantic Cache (for repeated prompts)
+        print("\n📦 Loading Semantic Cache...")
+        try:
+            app.state.analysis_cache = AnalysisCache()
+            app.state.cache_available = True
+            print("[*] Cache stats endpoint available at GET /cache/stats")
+        except Exception as e:
+            print(f"[!] Warning: Failed to initialize cache: {e}")
+            print("[!] Cache will not be available.")
+            app.state.analysis_cache = None
+            app.state.cache_available = False
 
         print("\n" + "=" * 60)
         print("✅ ALL LAYERS LOADED SUCCESSFULLY")
@@ -203,16 +211,8 @@ async def run_all_layers(
     Returns tuple of (layer_scores, total_parallel_latency_ms)
     """
 
-    active_weight = weights.regex_analyzer + weights.security_model
-    total_weight = active_weight + weights.vector_db
-
-    if weights.vector_db > 0 and total_weight > 0:
-        redistribution_factor = active_weight / total_weight
-    else:
-        redistribution_factor = 1.0
-
-    regex_weight = weights.regex_analyzer * redistribution_factor
-    security_weight = weights.security_model * redistribution_factor
+    regex_weight = weights.regex_analyzer
+    security_weight = weights.security_model
 
     async def run_regex():
         start = time.perf_counter()
@@ -250,7 +250,7 @@ async def run_all_layers(
             name="vector_db",
             score=round(score, 4),
             weight=round(weights.vector_db, 4),
-            weighted_score=0.0,
+            weighted_score=round(score * weights.vector_db, 4),
             latency_ms=round(latency, 2),
         )
 
@@ -314,16 +314,56 @@ async def analyze_prompt(request: PromptRequest):
     """
     prompt = request.prompt
     weights = get_weights(request.weights)
+    cache_hit = False
+    cached_response = None
+
+    # Check cache first
+    if getattr(app.state, "cache_available", False):
+        try:
+            cached = await app.state.analysis_cache.get(prompt)
+            if cached:
+                cache_hit = True
+                cached_response = cached
+        except Exception as e:
+            print(f"[!] Cache check failed: {e}")
+
+    if cached_response:
+        return AnalysisResponse(
+            prompt_preview=prompt[:512] + "..." if len(prompt) > 512 else prompt,
+            action=Action(cached_response["action"]),
+            weighted_score=cached_response["weighted_score"],
+            layer_scores=[LayerScore(**ls) for ls in cached_response["layer_scores"]],
+            sanitized_prompt=cached_response.get("sanitized_prompt"),
+            total_latency_ms=cached_response["total_latency_ms"],
+            sanitizer_latency_ms=cached_response.get("sanitizer_latency_ms"),
+            cache_hit=cache_hit,
+        )
 
     # Run all layers in parallel
     layer_scores, total_latency = await run_all_layers(prompt, app.state, weights)
 
     # Calculate weighted score
-    #weighted_score = sum(layer.weighted_score for layer in layer_scores)
-    weighted_score = sum(layer.weighted_score for layer in layer_scores if layer!='vector_db')
+    weighted_score = sum(layer.weighted_score for layer in layer_scores)
 
     # Determine action
     action = determine_action(weighted_score)
+
+    # Build response to cache
+    response_data = {
+        "action": action.value,
+        "weighted_score": round(weighted_score, 4),
+        "layer_scores": [ls.model_dump() for ls in layer_scores],
+        "sanitized_prompt": None,
+        "total_latency_ms": total_latency,
+        "sanitizer_latency_ms": None,
+    }
+
+    # Store in cache
+    if getattr(app.state, "cache_available", False):
+        try:
+            await app.state.analysis_cache.store(prompt, response_data)
+        except Exception as e:
+            print(f"[!] Cache store failed: {e}")
 
     return AnalysisResponse(
         prompt_preview=prompt[:512] + "..." if len(prompt) > 512 else prompt,
@@ -332,6 +372,7 @@ async def analyze_prompt(request: PromptRequest):
         layer_scores=layer_scores,
         sanitized_prompt=None,
         total_latency_ms=total_latency,
+        cache_hit=cache_hit,
     )
 
 
@@ -339,14 +380,40 @@ async def analyze_prompt(request: PromptRequest):
 async def gateway(request: PromptRequest):
     """
     Full safety gateway pipeline:
-    1. Analyze prompt through all layers (in parallel)
-    2. Calculate weighted score
-    3. PASS if safe, BLOCK if dangerous, SANITIZE if in between
+    1. Check cache for previous analysis
+    2. Analyze prompt through all layers (in parallel)
+    3. Calculate weighted score
+    4. PASS if safe, BLOCK if dangerous, SANITIZE if in between
+    5. Store result in cache
 
     This is the main endpoint for protecting LLM applications.
     """
     prompt = request.prompt
     weights = get_weights(request.weights)
+    cache_hit = False
+    cached_response = None
+
+    # Check cache first
+    if getattr(app.state, "cache_available", False):
+        try:
+            cached = await app.state.analysis_cache.get(prompt)
+            if cached:
+                cache_hit = True
+                cached_response = cached
+        except Exception as e:
+            print(f"[!] Cache check failed: {e}")
+
+    if cached_response:
+        return AnalysisResponse(
+            prompt_preview=prompt[:512] + "..." if len(prompt) > 512 else prompt,
+            action=Action(cached_response["action"]),
+            weighted_score=cached_response["weighted_score"],
+            layer_scores=[LayerScore(**ls) for ls in cached_response["layer_scores"]],
+            sanitized_prompt=cached_response.get("sanitized_prompt"),
+            total_latency_ms=cached_response["total_latency_ms"],
+            sanitizer_latency_ms=cached_response.get("sanitizer_latency_ms"),
+            cache_hit=cache_hit,
+        )
 
     # Run all layers in parallel
     layer_scores, total_latency = await run_all_layers(prompt, app.state, weights)
@@ -368,11 +435,26 @@ async def gateway(request: PromptRequest):
                 sanitizer_latency = round((time.perf_counter() - start) * 1000, 2)
             except Exception as e:
                 print(f"[!] Sanitization failed: {e}")
-                # Fall back to blocking if sanitization fails
                 action = Action.BLOCK
         else:
-            # No sanitizer available, block instead
             action = Action.BLOCK
+
+    # Build response to cache
+    response_data = {
+        "action": action.value,
+        "weighted_score": round(weighted_score, 4),
+        "layer_scores": [ls.model_dump() for ls in layer_scores],
+        "sanitized_prompt": sanitized_prompt,
+        "total_latency_ms": total_latency + (sanitizer_latency or 0),
+        "sanitizer_latency_ms": sanitizer_latency,
+    }
+
+    # Store in cache
+    if getattr(app.state, "cache_available", False):
+        try:
+            await app.state.analysis_cache.store(prompt, response_data)
+        except Exception as e:
+            print(f"[!] Cache store failed: {e}")
 
     return AnalysisResponse(
         prompt_preview=prompt[:512] + "..." if len(prompt) > 512 else prompt,
@@ -382,6 +464,7 @@ async def gateway(request: PromptRequest):
         sanitized_prompt=sanitized_prompt,
         total_latency_ms=total_latency + (sanitizer_latency or 0),
         sanitizer_latency_ms=sanitizer_latency,
+        cache_hit=cache_hit,
     )
 
 
@@ -404,6 +487,19 @@ async def get_config():
             "score >= threshold_sanitize": "BLOCK (reject entirely)",
         },
     }
+
+
+@app.get("/cache/stats")
+async def get_cache_stats():
+    """Get cache performance statistics."""
+    if not getattr(app.state, "cache_available", False):
+        return {"status": "unavailable", "message": "Cache is not enabled"}
+
+    try:
+        stats = app.state.analysis_cache.get_stats()
+        return {"status": "healthy", "cache": stats}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 # =============================================================================

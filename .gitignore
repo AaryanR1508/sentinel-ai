@@ -43,6 +43,7 @@ saved_security_model/
 training_checkpoints/
 results/
 models/
+vector_database/
 
 # Ignore large individual model files if they end up elsewhere
 *.bin

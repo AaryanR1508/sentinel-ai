@@ -22,4 +22,6 @@ dependencies = [
     "datasets",
     "evaluate",
     "scikit-learn",
+    "redisvl",
+    "redis[hiredis]"
 ]
