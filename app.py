@@ -34,13 +34,13 @@ class GatewayConfig:
     """Configuration for the safety gateway."""
 
     # Layer Weights (must sum to 1.0) - These are defaults, can be overridden per request
-    WEIGHT_REGEX = 0.4  # Fast keyword/pattern detection
-    WEIGHT_SECURITY_MODEL = 0.6  # Trained classifier (most reliable)
-    WEIGHT_VECTOR_DB = 0.0  # Semantic similarity to jailbreaks (placeholder)
+    WEIGHT_REGEX = 0.20  # Fast keyword/pattern detection
+    WEIGHT_SECURITY_MODEL = 0.45  # Trained classifier (most reliable)
+    WEIGHT_VECTOR_DB = 0.35  # Semantic similarity to jailbreaks (placeholder)
 
     # Decision Thresholds
-    THRESHOLD_PASS = 0.4  # Below this: PASS (safe)
-    THRESHOLD_SANITIZE = 0.6  # Below this: SANITIZE, Above: BLOCK
+    THRESHOLD_PASS = 0.35  # Below this: PASS (safe)
+    THRESHOLD_SANITIZE = 0.75  # Below this: SANITIZE, Above: BLOCK
 
 
 class Action(str, Enum):
