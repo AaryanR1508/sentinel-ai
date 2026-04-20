@@ -53,9 +53,7 @@ def load_and_preprocess_data(filepath):
             
         dataset = Dataset.from_pandas(df)
         
-        # --- CRITICAL ADJUSTMENT: STRATIFIED SPLIT ---
-        # With a 9:1 imbalance, a random split might result in a test set 
-        # with almost zero minority class examples. Stratify fixes this.
+        # Stratified split: handles 9:1 class imbalance so minority class appears in test set.
         dataset = dataset.class_encode_column("label")
         return dataset.train_test_split(test_size=0.2, seed=42, stratify_by_column="label")
         
@@ -64,10 +62,7 @@ def load_and_preprocess_data(filepath):
         exit(1)
 
 def compute_metrics(eval_pred):
-    """
-    Calculates Precision, Recall, and F1.
-    Accuracy is removed/deprioritized because it is misleading on skewed data.
-    """
+    """Calculate Precision, Recall, and F1; accuracy deprioritized as it's misleading on skewed data."""
     precision_metric = evaluate.load("precision")
     recall_metric = evaluate.load("recall")
     f1_metric = evaluate.load("f1")
@@ -112,9 +107,7 @@ def train():
     tokenized_datasets = tokenized_datasets.rename_column("label", "labels")
     tokenized_datasets.set_format("torch")
 
-    # 3. Calculate Class Weights
-    # Since Label 1 is majority, Label 0 will get a much higher weight (~9.0)
-    # and Label 1 will get a lower weight (~0.5).
+    # 3. Calculate class weights: label 1 (majority) gets ~0.5 weight, label 0 (minority) gets ~9.0.
     print("[*] Calculating Class Weights...")
     train_labels = np.array(tokenized_datasets["train"]["labels"])
     

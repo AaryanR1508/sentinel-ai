@@ -1,7 +1,4 @@
-"""
-Vector DB Layer
-Semantic similarity-based jailbreak detection using ChromaDB.
-"""
+"""Vector DB Layer — semantic similarity-based jailbreak detection using ChromaDB."""
 
 import asyncio
 from pathlib import Path
@@ -15,22 +12,13 @@ _VECTOR_DB_PATH = _ROOT_DIR / "vector_database"
 
 
 class BottleneckExtractor:
-    """
-    Information Bottleneck Extractor using semantic similarity.
-    Compares prompts against a database of known jailbreak signatures.
-    """
+    """Semantic similarity extractor that compares prompts against a database of known jailbreak signatures."""
 
     WHOLE_PROMPT_THRESHOLD = 0.45
     SENTENCE_THRESHOLD = 0.65
 
     def __init__(self, db_path: Path = None, model_name: str = "all-MiniLM-L6-v2"):
-        """
-        Initialize the bottleneck extractor with ChromaDB.
-
-        Args:
-            db_path: Path to ChromaDB persistence directory. Defaults to vector_database in root.
-            model_name: Sentence transformer model for embeddings.
-        """
+        """Initialize with ChromaDB. db_path defaults to vector_database in project root."""
         self.db_path = Path(db_path) if db_path else _VECTOR_DB_PATH
 
         print(f"[*] Loading Bottleneck Extractor from {self.db_path}...")
@@ -65,15 +53,7 @@ class BottleneckExtractor:
         return [s.strip() for s in final_chunks if s.strip()]
 
     def analyze(self, user_prompt: str) -> tuple:
-        """
-        Analyze a prompt for jailbreak signatures.
-
-        Args:
-            user_prompt: The prompt to analyze.
-
-        Returns:
-            Tuple of (score: float, details: list)
-        """
+        """Analyze a prompt for jailbreak signatures and return (score, details)."""
         min_distance_found = 1.0
         detected_details = []
 
@@ -113,28 +93,12 @@ class BottleneckExtractor:
         return final_score, detected_details
 
     async def analyze_async(self, user_prompt: str) -> tuple:
-        """
-        Async version of analyze for parallel execution.
-
-        Args:
-            user_prompt: The prompt to analyze.
-
-        Returns:
-            Tuple of (score: float, details: list)
-        """
+        """Async version of analyze for parallel execution."""
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.analyze, user_prompt)
 
     async def get_score_async(self, user_prompt: str) -> float:
-        """
-        Simplified async interface that returns just the score.
-
-        Args:
-            user_prompt: The prompt to analyze.
-
-        Returns:
-            Normalized risk score (0.0 - 1.0).
-        """
+        """Return just the normalized risk score (0.0-1.0) asynchronously."""
         score, _ = await self.analyze_async(user_prompt)
         return score
 

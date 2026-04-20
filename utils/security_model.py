@@ -1,7 +1,4 @@
-"""
-Security Model Layer
-Transformer-based classifier for detecting jailbreak/malicious prompts.
-"""
+"""Security Model Layer — transformer-based classifier for detecting jailbreak/malicious prompts."""
 
 import asyncio
 from pathlib import Path
@@ -15,18 +12,10 @@ _DEFAULT_MODEL_PATH = Path(__file__).parent.parent / "models" / "saved_security_
 
 
 class SecurityClassifier:
-    """
-    Transformer-based security classifier for prompt analysis.
-    Uses a fine-tuned model to detect jailbreak/malicious prompts.
-    """
+    """Transformer-based security classifier using a fine-tuned model to detect jailbreak/malicious prompts."""
     
     def __init__(self, model_path: Path = None):
-        """
-        Initializes the model and the explainer engine.
-        
-        Args:
-            model_path: Path to the saved model directory. Defaults to ./models/saved_security_model
-        """
+        """Initialize the model and explainer engine. model_path defaults to ./models/saved_security_model."""
         self.model_path = Path(model_path) if model_path else _DEFAULT_MODEL_PATH
         
         print(f"[*] Loading Security Model from {self.model_path}...")
@@ -47,15 +36,7 @@ class SecurityClassifier:
             raise
 
     def get_score(self, text: str) -> dict:
-        """
-        Fast pass: Returns just the Label and Confidence Score.
-        
-        Args:
-            text: Input text to analyze.
-            
-        Returns:
-            Dict with label, confidence, and is_dangerous flag.
-        """
+        """Return label, confidence, and is_dangerous flag for the given text."""
         inputs = self.tokenizer(text, return_tensors="pt", truncation=True, max_length=512).to(self.device)
         
         with torch.no_grad():
@@ -79,44 +60,30 @@ class SecurityClassifier:
         }
 
     async def get_score_async(self, text: str) -> dict:
-        """
-        Async version of get_score for parallel execution.
-        
-        Args:
-            text: Input text to analyze.
-            
-        Returns:
-            Dict with label, confidence, and is_dangerous flag.
-        """
+        """Async version of get_score for parallel execution."""
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.get_score, text)
 
     def extract_bottleneck(self, text: str) -> list:
-        """
-        The 'Hackathon Way' IB Extraction.
-        Returns the specific words that drove the decision.
-        """
-        # The explainer calculates attribution scores for the predicted class
+        """Return the specific words that most influenced the classification decision."""
+        # Attribution scores for the predicted class
         word_attributions = self.explainer(text)
         
         significant_words = []
         
-        # Format: List of tuples (word, score)
+        # Skip special tokens and low-impact words; keep only positive contributors to "Malicious".
         for word, score in word_attributions:
-            # Ignore special tokens ([CLS], [SEP]) and low-impact words
             if word in ["[CLS]", "[SEP]"] or abs(score) < 0.3:
                 continue
             
-            # We only care about words that POSITIVELY contributed to the "Malicious" classification
+            # We only care about words that positively contributed to "Malicious"
             if score > 0:
                 significant_words.append({"word": word, "impact": round(score, 3)})
                 
         return significant_words
 
     def analyze(self, text: str) -> dict:
-        """
-        Full Pipeline: Scores the text AND extracts the dangerous trigger words.
-        """
+        """Score the text and extract trigger words if dangerous."""
         # 1. Get Prediction
         prediction = self.get_score(text)
         
@@ -126,7 +93,7 @@ class SecurityClassifier:
             "bottleneck_features": []
         }
         
-        # 2. Extract features ONLY if it's dangerous (Optimization)
+        # 2. Extract trigger words only if dangerous (skip for benign prompts).
         if prediction['is_dangerous']:
             result['bottleneck_features'] = self.extract_bottleneck(text)
             

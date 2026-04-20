@@ -1,9 +1,4 @@
-"""
-Prompt Sanitizer Layer
-Uses Llama 3.3 70B via SambaNova API to rewrite potentially dangerous prompts safely.
-
-Requirements: pip install openai python-dotenv
-"""
+"""Prompt Sanitizer Layer — uses Llama 3.3 70B via SambaNova API to rewrite dangerous prompts safely."""
 
 import asyncio
 from pathlib import Path
@@ -17,10 +12,7 @@ load_dotenv(_ENV_PATH)
 
 
 class PromptSanitizer:
-    """
-    LLM-based prompt sanitization layer.
-    Uses Llama 3.3 70B to rewrite potentially dangerous prompts into safe versions.
-    """
+    """LLM-based sanitization layer using Llama 3.3 70B to rewrite dangerous prompts into safe versions."""
     
     SYSTEM_INSTRUCTION = """
 You are a Prompt Safety Filter. Your sole function is to transform any input into a safe, neutral request.
@@ -54,13 +46,7 @@ Process the following input according to these rules:
 """
 
     def __init__(self, api_key: str = None, model: str = "Meta-Llama-3.3-70B-Instruct"):
-        """
-        Initialize the sanitizer with SambaNova API credentials.
-        
-        Args:
-            api_key: SambaNova API key. If None, reads from SAMBANOVA_API_KEY env var.
-            model: Model name to use for sanitization.
-        """
+        """Initialize with SambaNova API credentials. api_key falls back to SAMBANOVA_API_KEY env var."""
         self.api_key = api_key or os.getenv("SAMBANOVA_API_KEY")
         if not self.api_key:
             raise ValueError(
@@ -76,15 +62,7 @@ Process the following input according to these rules:
         print(f"[*] PromptSanitizer initialized with model: {self.model}")
 
     def sanitize(self, raw_input: str) -> str:
-        """
-        Synchronously sanitize a potentially dangerous prompt.
-        
-        Args:
-            raw_input: The raw user input to sanitize.
-            
-        Returns:
-            Sanitized version of the prompt.
-        """
+        """Synchronously sanitize a potentially dangerous prompt and return the safe version."""
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -103,16 +81,7 @@ Process the following input according to these rules:
             return "[Sanitization failed - prompt blocked for safety]"
 
     async def sanitize_async(self, raw_input: str) -> str:
-        """
-        Asynchronously sanitize a potentially dangerous prompt.
-        Runs the synchronous API call in a thread pool.
-        
-        Args:
-            raw_input: The raw user input to sanitize.
-            
-        Returns:
-            Sanitized version of the prompt.
-        """
+        """Asynchronously sanitize a prompt by running the sync API call in a thread pool."""
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.sanitize, raw_input)
 

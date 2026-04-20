@@ -1,10 +1,4 @@
-"""
-LLM Safety Gateway API
-CPU-centric, lightweight real-time safety gateway for LLM prompts.
-
-Runs 3 detection layers in parallel and uses weighted scoring to determine
-whether to PASS, SANITIZE, or BLOCK prompts.
-"""
+"""LLM Safety Gateway API — CPU-centric real-time safety gateway running 3 parallel detection layers with weighted scoring."""
 
 import asyncio
 import time
@@ -35,14 +29,14 @@ from utils.cache import AnalysisCache
 class GatewayConfig:
     """Configuration for the safety gateway."""
 
-    # Layer Weights (must sum to 1.0) - These are defaults, can be overridden per request
-    WEIGHT_REGEX = 0.20  # Fast keyword/pattern detection
-    WEIGHT_SECURITY_MODEL = 0.45  # Trained classifier (most reliable)
-    WEIGHT_VECTOR_DB = 0.35  # Semantic similarity to jailbreaks (placeholder)
+    # Layer weights (must sum to 1.0), overridable per request. Regex=fast tripwire, Model=50k fine-tuned (highest signal), VectorDB=50k signatures two-pass search.
+    WEIGHT_REGEX = 0.10
+    WEIGHT_SECURITY_MODEL = 0.55
+    WEIGHT_VECTOR_DB = 0.35
 
-    # Decision Thresholds
-    THRESHOLD_PASS = 0.35  # Below this: PASS (safe)
-    THRESHOLD_SANITIZE = 0.75  # Below this: SANITIZE, Above: BLOCK
+    # Thresholds: BLOCK lowered 0.75->0.65 since regex max contribution dropped 0.20->0.10.
+    THRESHOLD_PASS = 0.35       # Below this: PASS (safe)
+    THRESHOLD_SANITIZE = 0.65   # Below this: SANITIZE, Above: BLOCK
 
 
 class Action(str, Enum):
@@ -93,6 +87,7 @@ class AnalysisResponse(BaseModel):
     sanitized_prompt: Optional[str] = None
     total_latency_ms: float
     sanitizer_latency_ms: Optional[float] = None
+    original_latency_ms: Optional[float] = None  # Set on cache hits; the latency of the original uncached run.
     cache_hit: bool = False
 
 
@@ -110,10 +105,7 @@ class HealthResponse(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Initialize all models at startup, clean up on shutdown.
-    This ensures models are loaded ONCE when the server starts.
-    """
+    """Initialize all models at startup and clean up on shutdown."""
     print("\n" + "=" * 60)
     print("🚀 LLM SAFETY GATEWAY - INITIALIZING")
     print("=" * 60 + "\n")
@@ -205,11 +197,7 @@ if STATIC_DIR.exists():
 async def run_all_layers(
     prompt: str, app_state, weights: WeightsConfig
 ) -> tuple[list[LayerScore], float]:
-    """
-    Run all 3 detection layers in PARALLEL and return their scores with latencies.
-    Vector DB placeholder weight is redistributed to active layers.
-    Returns tuple of (layer_scores, total_parallel_latency_ms)
-    """
+    """Run all 3 detection layers in parallel and return (layer_scores, total_latency_ms)."""
 
     regex_weight = weights.regex_analyzer
     security_weight = weights.security_model
@@ -308,35 +296,33 @@ async def health_check():
 
 @app.post("/analyze", response_model=AnalysisResponse)
 async def analyze_prompt(request: PromptRequest):
-    """
-    Analyze a prompt through all safety layers WITHOUT sanitizing.
-    Returns the action (pass/sanitize/block) and detailed scores with latencies.
-    """
+    """Analyze a prompt through all safety layers without sanitizing and return scores/action."""
     prompt = request.prompt
     weights = get_weights(request.weights)
-    cache_hit = False
     cached_response = None
+    cache_start = time.perf_counter()
 
     # Check cache first
     if getattr(app.state, "cache_available", False):
         try:
             cached = await app.state.analysis_cache.get(prompt)
             if cached:
-                cache_hit = True
                 cached_response = cached
         except Exception as e:
             print(f"[!] Cache check failed: {e}")
 
     if cached_response:
+        cache_latency = round((time.perf_counter() - cache_start) * 1000, 2)
+        zeroed_layers = [LayerScore(**{**ls, "latency_ms": 0.0}) for ls in cached_response["layer_scores"]]
         return AnalysisResponse(
             prompt_preview=prompt[:512] + "..." if len(prompt) > 512 else prompt,
             action=Action(cached_response["action"]),
             weighted_score=cached_response["weighted_score"],
-            layer_scores=[LayerScore(**ls) for ls in cached_response["layer_scores"]],
+            layer_scores=zeroed_layers,
             sanitized_prompt=cached_response.get("sanitized_prompt"),
-            total_latency_ms=cached_response["total_latency_ms"],
-            sanitizer_latency_ms=cached_response.get("sanitizer_latency_ms"),
-            cache_hit=cache_hit,
+            total_latency_ms=cache_latency,
+            original_latency_ms=cached_response.get("original_latency_ms"),
+            cache_hit=True,
         )
 
     # Run all layers in parallel
@@ -348,14 +334,13 @@ async def analyze_prompt(request: PromptRequest):
     # Determine action
     action = determine_action(weighted_score)
 
-    # Build response to cache
+    # Build response to cache — latency is NOT cached; original_latency_ms stored for cache-hit comparison.
     response_data = {
         "action": action.value,
         "weighted_score": round(weighted_score, 4),
         "layer_scores": [ls.model_dump() for ls in layer_scores],
         "sanitized_prompt": None,
-        "total_latency_ms": total_latency,
-        "sanitizer_latency_ms": None,
+        "original_latency_ms": total_latency,
     }
 
     # Store in cache
@@ -372,47 +357,39 @@ async def analyze_prompt(request: PromptRequest):
         layer_scores=layer_scores,
         sanitized_prompt=None,
         total_latency_ms=total_latency,
-        cache_hit=cache_hit,
+        cache_hit=False,
     )
 
 
 @app.post("/gateway", response_model=AnalysisResponse)
 async def gateway(request: PromptRequest):
-    """
-    Full safety gateway pipeline:
-    1. Check cache for previous analysis
-    2. Analyze prompt through all layers (in parallel)
-    3. Calculate weighted score
-    4. PASS if safe, BLOCK if dangerous, SANITIZE if in between
-    5. Store result in cache
-
-    This is the main endpoint for protecting LLM applications.
-    """
+    """Full gateway pipeline: check cache, run layers in parallel, score, decide PASS/SANITIZE/BLOCK, cache result."""
     prompt = request.prompt
     weights = get_weights(request.weights)
-    cache_hit = False
     cached_response = None
+    cache_start = time.perf_counter()
 
     # Check cache first
     if getattr(app.state, "cache_available", False):
         try:
             cached = await app.state.analysis_cache.get(prompt)
             if cached:
-                cache_hit = True
                 cached_response = cached
         except Exception as e:
             print(f"[!] Cache check failed: {e}")
 
     if cached_response:
+        cache_latency = round((time.perf_counter() - cache_start) * 1000, 2)
+        zeroed_layers = [LayerScore(**{**ls, "latency_ms": 0.0}) for ls in cached_response["layer_scores"]]
         return AnalysisResponse(
             prompt_preview=prompt[:512] + "..." if len(prompt) > 512 else prompt,
             action=Action(cached_response["action"]),
             weighted_score=cached_response["weighted_score"],
-            layer_scores=[LayerScore(**ls) for ls in cached_response["layer_scores"]],
+            layer_scores=zeroed_layers,
             sanitized_prompt=cached_response.get("sanitized_prompt"),
-            total_latency_ms=cached_response["total_latency_ms"],
-            sanitizer_latency_ms=cached_response.get("sanitizer_latency_ms"),
-            cache_hit=cache_hit,
+            total_latency_ms=cache_latency,
+            original_latency_ms=cached_response.get("original_latency_ms"),
+            cache_hit=True,
         )
 
     # Run all layers in parallel
@@ -439,14 +416,13 @@ async def gateway(request: PromptRequest):
         else:
             action = Action.BLOCK
 
-    # Build response to cache
+    # Build response to cache — latency is NOT cached; original_latency_ms stored for cache-hit comparison.
     response_data = {
         "action": action.value,
         "weighted_score": round(weighted_score, 4),
         "layer_scores": [ls.model_dump() for ls in layer_scores],
         "sanitized_prompt": sanitized_prompt,
-        "total_latency_ms": total_latency + (sanitizer_latency or 0),
-        "sanitizer_latency_ms": sanitizer_latency,
+        "original_latency_ms": total_latency + (sanitizer_latency or 0),
     }
 
     # Store in cache
@@ -464,7 +440,7 @@ async def gateway(request: PromptRequest):
         sanitized_prompt=sanitized_prompt,
         total_latency_ms=total_latency + (sanitizer_latency or 0),
         sanitizer_latency_ms=sanitizer_latency,
-        cache_hit=cache_hit,
+        cache_hit=False,
     )
 
 

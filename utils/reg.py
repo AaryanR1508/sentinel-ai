@@ -1,7 +1,4 @@
-"""
-Regex Analyzer Layer
-Keyword-based semantic analysis for detecting risky content.
-"""
+"""Regex Analyzer Layer — keyword-based semantic analysis for detecting risky content."""
 
 import sys
 import json
@@ -20,14 +17,7 @@ except ImportError:
     print("[!] Error: Missing libraries. Run: pip install spacy rapidfuzz")
     sys.exit(1)
 
-# ==============================================================================
-# 🛡️ EXHAUSTIVE KEYWORD RISK DICTIONARY
-# ==============================================================================
-# Weights:
-# 1.0 = Critical Threat (Almost always blocked)
-# 0.8 = High Risk (Likely dangerous, context needed)
-# 0.6 = Medium Risk (Suspicious, could be benign)
-# ==============================================================================
+# KEYWORD RISK DICTIONARY: 1.0 = Critical Threat, 0.8 = High Risk, 0.6 = Medium Risk.
 
 DEFAULT_KEYWORDS: Dict[str, float] = {
     
@@ -122,19 +112,10 @@ DEFAULT_KEYWORDS: Dict[str, float] = {
 }
 
 class SemanticSanitizer:
-    """
-    Regex-based semantic analyzer for detecting risky keywords and patterns.
-    Uses NLP tokenization and fuzzy matching for robust detection.
-    """
+    """Regex-based semantic analyzer using NLP tokenization and fuzzy matching for keyword detection."""
     
     def __init__(self, merge_file: Path = None, replace_file: Path = None):
-        """
-        Initialize the semantic sanitizer.
-        
-        Args:
-            merge_file: JSON file path to merge with default keywords.
-            replace_file: JSON file path to replace default keywords entirely.
-        """
+        """Initialize the sanitizer. merge_file adds to defaults; replace_file replaces them entirely."""
         print("[*] Loading Regex Analyzer (SemanticSanitizer)...")
         try:
             # Disable parser/ner for speed, we only need tokenizer/lemmatizer
@@ -165,43 +146,31 @@ class SemanticSanitizer:
             return {}
 
     def _preprocess_text(self, text: str) -> str:
-        """
-        Robust Normalization Pipeline.
-        Order matters: Leet -> Unic -> Sep -> Camel -> Join -> Stutter
-        """
+        """Normalization pipeline: Leet -> Unicode -> Separators -> CamelCase -> SmartJoin -> CollapseRepeats."""
         
-        # 1. Leetspeak Normalization (Run FIRST to catch symbols like '¡' or '1')
-        # We map numbers/symbols to their letter equivalents.
+        # 1. Leetspeak normalization: map numbers/symbols to letter equivalents.
         leetspeak_map = str.maketrans({
             '0': 'o', '1': 'i', '3': 'e', '4': 'a', 
             '5': 's', '@': 'a', '$': 's', '!': 'i', '¡': 'i', '|': 'l'
         })
         text = text.translate(leetspeak_map)
 
-        # 2. Unicode Normalization
-        # Decomposes chars and keeps only ASCII (removes hidden formatting)
+        # 2. Unicode normalization: decompose to ASCII, removing hidden formatting.
         text = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('utf-8')
         
-        # 3. Separator Replacement
-        # Replace common separators with spaces to isolate words or chars
-        # k.1.l.l -> k 1 l l
+        # 3. Replace separators with spaces (k.1.l.l -> k 1 l l).
         text = text.replace("_", " ").replace("-", " ").replace(".", " ")
 
         # 4. Split CamelCase (SystemKill -> System Kill)
         text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)
         
-        # 5. Smart Join (The Fix for 'k i l l' and 'k.1.l.l')
-        # Finds sequences of single characters separated by whitespace and merges them.
-        # Regex explanation:
-        # (?:\b[a-zA-Z0-9]\s+)+ : Match one or more "SingleChar + Space" groups
-        # [a-zA-Z0-9]\b         : End with a SingleChar
+        # 5. Smart join: merge single-char sequences back into words (k i l l -> kill).
         def joiner(match):
             return match.group(0).replace(" ", "")
         
         text = re.sub(r'(?:\b[a-zA-Z0-9]\s+)+[a-zA-Z0-9]\b', joiner, text)
             
-        # 6. Collapse Repeated Chars (muuuuurder -> murder)
-        # Matches any char repeated 3+ times and reduces it to 1
+        # 6. Collapse repeated chars 3+ times (muuuuurder -> murder).
         text = re.sub(r'(.)\1{2,}', r'\1', text)
         
         return text
@@ -231,10 +200,7 @@ class SemanticSanitizer:
             if match:
                 matched_token, score, index = match
                 
-                # DYNAMIC THRESHOLD LOGIC
-                # Short words (<=4 chars, e.g. "kill") need strict matching (95%)
-                # to avoid false positives like "skill" or "shell".
-                # Long words (e.g. "murder") can be looser (80%) to catch typos.
+                # Dynamic threshold: short words (<=4 chars) use 95% to avoid false positives, long words use 85%.
                 threshold = 95 if len(bad_word) <= 4 else 85
                 
                 if score >= threshold: 
@@ -244,28 +210,12 @@ class SemanticSanitizer:
         return min(total_score, 1.0), sorted(list(triggered_words))
 
     async def analyze_async(self, text: str) -> Tuple[float, List[str]]:
-        """
-        Async version of analyze for parallel execution.
-        
-        Args:
-            text: Input text to analyze.
-            
-        Returns:
-            Tuple of (score, triggered_words).
-        """
+        """Async version of analyze for parallel execution."""
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self.analyze, text)
 
     async def get_score_async(self, text: str) -> float:
-        """
-        Simplified async interface that returns just the score.
-        
-        Args:
-            text: Input text to analyze.
-            
-        Returns:
-            Normalized risk score (0.0 - 1.0).
-        """
+        """Return just the normalized risk score (0.0-1.0) asynchronously."""
         score, _ = await self.analyze_async(text)
         return score
 

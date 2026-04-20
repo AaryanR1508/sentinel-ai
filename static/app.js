@@ -316,8 +316,13 @@ function showResults(response) {
     
     elements.resultScoreValue.textContent = response.weighted_score.toFixed(4);
     
-    // Total latency
-    elements.totalLatency.textContent = `Total: ${response.total_latency_ms.toFixed(0)}ms`;
+    // Total latency — show original latency comparison on cache hits
+    if (response.cache_hit && response.original_latency_ms != null) {
+        const speedup = (response.original_latency_ms / response.total_latency_ms).toFixed(0);
+        elements.totalLatency.textContent = `Total: ${response.total_latency_ms.toFixed(0)}ms (was ${response.original_latency_ms.toFixed(0)}ms — ${speedup}x faster)`;
+    } else {
+        elements.totalLatency.textContent = `Total: ${response.total_latency_ms.toFixed(0)}ms`;
+    }
     
     // Sanitized output
     if (response.sanitized_prompt) {

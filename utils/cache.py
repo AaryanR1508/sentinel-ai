@@ -16,14 +16,14 @@ load_dotenv(_ROOT_DIR / ".env")
 
 class AnalysisCache:
     TTL_SECONDS = 600
+    DISTANCE_THRESHOLD = 0.15
 
     def __init__(
         self,
         redis_url: Optional[str] = None,
-        distance_threshold: Optional[float] = None
+        distance_threshold: float = DISTANCE_THRESHOLD
     ):
-        redis_url = redis_url or os.getenv("REDIS_URL", "redis://localhost:6379")
-        distance_threshold = distance_threshold or float(os.getenv("CACHE_THRESHOLD", "0.15"))
+        redis_url = redis_url or "redis://localhost:6379"
 
         self.cache = SemanticCache(
             name="gateway_analysis",
