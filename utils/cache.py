@@ -21,12 +21,13 @@ class AnalysisCache:
     def __init__(
         self,
         redis_url: Optional[str] = None,
-        distance_threshold: float = DISTANCE_THRESHOLD
+        distance_threshold: float = DISTANCE_THRESHOLD,
+        name: str = "gateway_analysis"
     ):
         redis_url = redis_url or "redis://localhost:6379"
 
         self.cache = SemanticCache(
-            name="gateway_analysis",
+            name=name,
             redis_url=redis_url,
             distance_threshold=distance_threshold,
             ttl=self.TTL_SECONDS,

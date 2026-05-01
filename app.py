@@ -137,16 +137,19 @@ async def lifespan(app: FastAPI):
             app.state.sanitizer = None
             app.state.sanitizer_available = False
 
-        # Semantic Cache (for repeated prompts)
+        # Semantic Cache (for repeated prompts) — separate caches per endpoint
+        # to avoid analyze results (no sanitized_prompt) polluting gateway cache.
         print("\n📦 Loading Semantic Cache...")
         try:
-            app.state.analysis_cache = AnalysisCache()
+            app.state.analysis_cache = AnalysisCache(name="analyze_cache")
+            app.state.gateway_cache = AnalysisCache(name="gateway_cache")
             app.state.cache_available = True
             print("[*] Cache stats endpoint available at GET /cache/stats")
         except Exception as e:
             print(f"[!] Warning: Failed to initialize cache: {e}")
             print("[!] Cache will not be available.")
             app.state.analysis_cache = None
+            app.state.gateway_cache = None
             app.state.cache_available = False
 
         print("\n" + "=" * 60)
@@ -372,7 +375,7 @@ async def gateway(request: PromptRequest):
     # Check cache first
     if getattr(app.state, "cache_available", False):
         try:
-            cached = await app.state.analysis_cache.get(prompt)
+            cached = await app.state.gateway_cache.get(prompt)
             if cached:
                 cached_response = cached
         except Exception as e:
@@ -428,7 +431,7 @@ async def gateway(request: PromptRequest):
     # Store in cache
     if getattr(app.state, "cache_available", False):
         try:
-            await app.state.analysis_cache.store(prompt, response_data)
+            await app.state.gateway_cache.store(prompt, response_data)
         except Exception as e:
             print(f"[!] Cache store failed: {e}")
 
@@ -472,8 +475,11 @@ async def get_cache_stats():
         return {"status": "unavailable", "message": "Cache is not enabled"}
 
     try:
-        stats = app.state.analysis_cache.get_stats()
-        return {"status": "healthy", "cache": stats}
+        return {
+            "status": "healthy",
+            "analyze_cache": app.state.analysis_cache.get_stats(),
+            "gateway_cache": app.state.gateway_cache.get_stats(),
+        }
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
