@@ -355,7 +355,37 @@ Client Application
 
 ## 4.4 State Diagram
 
-[Insert state diagram]
+```text
+[ Idle ] <────────────────────────────────────────┐
+   │                                              │
+   └──> (Receive Prompt)                          │
+          │                                       │
+          V                                       │
+  [ Cache Checking ]                              │
+   │              │                               │
+   │ [Hit]        │ [Miss]                        │
+   V              V                               │
+   │      [ Parallel Evaluating ]                 │
+   │       ├──> Regex Analyzer                    │
+   │       ├──> Security Model                    │
+   │       └──> Vector DB Search                  │
+   │              │                               │
+   │              V                               │
+   │     [ Aggregating & Scoring ]                │
+   │              │                               │
+   │              V                               │
+   │        [ Deciding Action ]                   │
+   │         │               │                    │
+   │         │ [PASS/BLOCK]  │ [SANITIZE]         │
+   │         V               V                    │
+   │         │         [ Sanitizing ]             │
+   │         │               │                    │
+   │         V               V                    │
+   │     [ Cache Updating ] <┘                    │
+   │         │                                    │
+   V         V                                    │
+[ Return Response ] ──────────────────────────────┘
+```
 
 ---
 
