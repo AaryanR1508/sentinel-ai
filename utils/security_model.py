@@ -20,7 +20,8 @@ class SecurityClassifier:
         
         print(f"[*] Loading Security Model from {self.model_path}...")
         try:
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            # self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            self.device = "cpu"
             self.tokenizer = AutoTokenizer.from_pretrained(str(self.model_path))
             self.model = AutoModelForSequenceClassification.from_pretrained(str(self.model_path)).to(self.device)
             

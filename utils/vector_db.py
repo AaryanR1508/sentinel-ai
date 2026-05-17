@@ -26,7 +26,9 @@ class BottleneckExtractor:
         self.client = chromadb.PersistentClient(path=str(self.db_path))
 
         self.emb_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name=model_name
+            # For no cpu comment out device="cpu"
+            model_name=model_name,
+            device="cpu"
         )
 
         try:
